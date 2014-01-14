@@ -210,9 +210,9 @@
     ctx = normalizeCtx(ctx);
 
     // If the selector is cached, why not used that? So mutch faster.
-    if ((els = cache[sel]) !== undefined) {
-      return els;
-    }
+    // if ((els = cache[sel]) !== undefined) {
+    //  return els;
+    // }
 
     if (sel.indexOf(',') !== -1) {
       // Comma separated selectors. E.g $('p, a');
