@@ -13,11 +13,21 @@
     , tagNameWithoutEndExp = /^[\w\-]+/
     , tagNameAndOrIdAndOrClassExp = /^([\w\-]+)(?:\#([\w\-]*)|)(?:\.([\w\-]*))(.*)$/
     , tagNameAttributeExp = /^([\w\-]+)(.*)\[([\w\-]+)(?:(\=|\|\=|\~\=|\$\=|\^\=)(.*)|)\]$/
-    , splittersExp = /([\s\>\<\+\~]+)/
+    , splittersExp = /([\s\>\\<\+\~]+)/
     , whitespaceExp = /\s/g
     , hasQsa = !!doc[byAll]
-    , slice = [].slice
     , _cache = {};
+
+  // Prototype references.
+  var ArrayProto = Array.prototype;
+
+  // Create reference for speeding up the access to the prototype.
+  var slice = ArrayProto.slice
+    , indexOf = ArrayProto.indexOf
+    , lastIndexOf = ArrayProto.lastIndexOf;
+
+  // Native functions that we are using.
+  var nativeForEach = ArrayProto.forEach;
 
   /**
    * Compare position of elements.
@@ -71,8 +81,12 @@
    */
 
   function each (a, fn) {
-    var i = 0, l = a.length;
-    for (; i < l; i++) fn(a[i]);
+    if (nativeForEach && a.forEach === nativeForEach) {
+      return a.forEach(fn);
+    } else {
+      var i = 0, l = a.length;
+      for (; i < l; i++) fn(a[i]);
+    }
   }
 
   /**
@@ -126,46 +140,6 @@
         if (el[nodeType] === 1) return el;
       }
     }
-  }
-
-  /**
-   * Attribute selectors.
-   *
-   * Supported:
-   *   =
-   *   |=
-   *   ~=
-   *   $=
-   *   ^=
-   *
-   * @param {Array} m
-   * @param {Object} el
-   *
-   * @return {Bool}
-   */
-
-  function attributeSelectors (m, el) {
-    var ret = false, val;
-
-    switch (m[4]) {
-      case '=':
-        ret = el.getAttribute(m[3]) === m[5];
-        break;
-      case '|=':
-        ret = (el.getAttribute(m[3]) || '').indexOf(m[5] + '-') !== -1;
-        break;
-      case '~=':
-        ret = (el.getAttribute(m[3]) || '').indexOf(m[5]) !== -1;
-        break;
-      case '$=':
-        val = (el.getAttribute(m[3]) || '');
-        ret = val.lastIndexOf(m[5]) === val.length - m[5].length;
-        break;
-      case '^=':
-        ret = (el.getAttribute(m[3]) || '').indexOf(m[5]) === 0;
-    }
-
-    return ret;
   }
 
   /**
@@ -229,8 +203,8 @@
    * @param {Bool} c Save to cache? Default is true.
    */
 
-  function isa (sel, ctx, c) {
-    var m, els = [];
+  function isa (sel, ctx) {
+    var m, tmp, els = [];
 
     // Get the right context to use.
     ctx = normalizeCtx(ctx);
@@ -248,7 +222,7 @@
           els.push(el);
         });
       });
-      return els; //(!c ? cache(sel, els) : els);
+      return els;
     } else {
       if (idExp.test(sel)) {
         els = hasQsa ? ctx[byAll](sel.substr(1)) : ((els = ctx[byId](sel.substr(1))) ? [els] : []);
@@ -260,8 +234,8 @@
         var fr = m.length === 4;
         els = els || [];
         each(ctx[byTag](m[1]), function (el) {
-          if ((fr && el.getAttribute('id') === m[2] && (el.getAttribute('class') || '').indexOf(m[3]) !== -1) ||
-          (el.getAttribute('id') === m[2] || (el.getAttribute('class') || '').indexOf(m[3]) !== -1)) {
+          if ((fr && el.getAttribute('id') === m[2] && indexOf.call((el.getAttribute('class') || ''), (m[3]) !== -1) ||
+          (el.getAttribute('id') === m[2] || indexOf.call((el.getAttribute('class') || ''), m[3]) !== -1))) {
             if (m[4] !== undefined) {
               // build a function that walks all the way to the bottom om the "extra" selectors string.
             } else {
@@ -275,12 +249,12 @@
           if (m[2] !== '') {
             var r = isa(m[1] + m[2]);
             for (var i = 0, l = r.length; i < l; i++) {
-              if (el === r[i] && el.hasAttribute(m[3]) && (m[4] !== undefined ? attributeSelectors(m, el) : true)) {
+              if (el === r[i] && el.hasAttribute(m[3]) && (m[4] !== undefined && isa.operators[m[4]] ? isa.operators[m[4]](m, el) : true)) {
                 els.push(el);
                 break;
               }
             }
-          } else if (el.hasAttribute(m[3]) && (m[4] !== undefined ? attributeSelectors(m, el) : true)) {
+          } else if (el.hasAttribute(m[3]) && (m[4] !== undefined && isa.operators[m[4]] ? isa.operators[m[4]](m, el) : true)) {
             els.push(el);
           }
         });
@@ -288,28 +262,12 @@
         sel = m[1].length > 2 ? sel = sel.replace(whitespaceExp, '') : sel;
         m = m[1].length > 2 ? m[1].replace(whitespaceExp, '') : m[1];
         els = els || [];
-        var sels = sel.split(m), el = isa(sels[0]), tagName = (tagNameWithoutEndExp.exec(sels[1]) || [])[0];
+        var sels = sel.split(m), el = isa(sels[0]), wantedTagName = (tagNameWithoutEndExp.exec(sels[1]) || [])[0];
         if ((el = el[0])) {
-          if (m === '~') {
+          if (m !== ' ' && isa.combinators[m] !== undefined) {
             each(isa(sels[1]), function (nextEl) {
-              if (nextEl.parentNode === el.parentNode &&
-                compareString(nextEl.tagName, tagName) &&
-                comparePosition(el, nextEl) & 0x04) {
-                  els.push(nextEl);
-                }
-            });
-          } else if (m === '+') {
-            each(isa(sels[1]), function (nextEl) {
-              if (nextElementSibling(el) === nextEl) {
-                els.push(nextEl);
-              }
-            });
-          } else if (m === '>' || m === '<') {
-            each(isa(sels[1]), function (child) {
-              if ((child.parentNode === el && compareString(child.tagName, tagName)) ||
-                (child === el && compareString(child.tagName, el.tagName))) {
-                els.push(m === '>' ? child : el);
-              }
+              tmp = isa.combinators[m](el, nextEl, wantedTagName);
+              if (tmp) els.push(tmp);
             });
           } else if (m === ' ') {
             each(isa(sels[0]), function (ctx) {
@@ -321,9 +279,66 @@
         }
       }
 
-      return els; //(!c ? cache(sel, els) : els)
+      return els;
     }
   }
+
+  /**
+   * isa operators selectors.
+   */
+
+  isa.operators = {
+    '=': function (m, el) {
+      return el.getAttribute(m[3]) === m[5];
+    },
+
+    '|=': function (m, el) {
+      return indexOf.call((el.getAttribute(m[3]) || ''), m[5] + '-') !== -1;
+    },
+
+    '~=': function (m, el) {
+      return indexOf.call((el.getAttribute(m[3]) || ''), m[5]) !== -1;
+    },
+
+    '$=': function (m, el) {
+      var val  = (el.getAttribute(m[3]) || '');
+      return lastIndexOf.call(val, m[5]) === val.length - m[5].length;
+    },
+
+    '^=': function (m, el) {
+      return indexOf.call((el.getAttribute(m[3]) || ''), m[5]) === 0;
+    }
+  };
+
+  /**
+   * isa combinators selectors.
+   */
+
+   isa.combinators = {
+     // p ~ p
+     '~': function (el, nextEl, wantedTagName) {
+       if (nextEl.parentNode === el.parentNode && compareString(nextEl.tagName, wantedTagName) && comparePosition(el, nextEl) & 0x04) {
+         return el;
+       }
+     },
+
+     // p + p
+     '+': function (el, nextEl) {
+       if (nextElementSibling(el) === nextEl) return el;
+     },
+
+     // div > p
+     '>': function (el, nextEl, wantedTagName, m) {
+       if ((nextEl.parentNode === el && compareString(nextEl.tagName, wantedTagName)) || (nextEl === el && compareString(nextEl.tagName, el.tagName))) {
+         return m === '>' ? nextEl : el;
+       }
+     },
+
+     // div < p
+     '<': function (el, nextEl, wantedTagName) {
+       return this['>'](el, nextEl, wantedTagName, '<');
+     }
+   };
 
   // Add `isa` to window object.
   window.isa = isa;
