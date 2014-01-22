@@ -241,7 +241,9 @@
    * Supported:
    * - #foo
    * - .foo
-   * - div (tagname)
+   * - div
+	 * - ul#foo.foo (combo)
+	 *
    *
    * @param {String} sel The selector string
    * @param {Object} ctx The context. Default is document.
