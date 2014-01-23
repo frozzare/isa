@@ -4,7 +4,7 @@
  * Version: 0.1.0
  * Released under the MIT License.
  *
- * Date: 2014-01-22
+ * Date: 2014-01-23
  */
 
 (function (window) {
@@ -241,9 +241,7 @@
    * Supported:
    * - #foo
    * - .foo
-   * - div
-	 * - ul#foo.foo (combo)
-	 *
+   * - div (tagname)
    *
    * @param {String} sel The selector string
    * @param {Object} ctx The context. Default is document.
@@ -266,12 +264,12 @@
     }
   
     // Split selectors by comma if it's exists.
-    if (sel.indexOf(',') !== -1) {
+    if (sel.indexOf(',') !== -1 && (m = sel.split(','))) {
       // Comma separated selectors. E.g $('p, a');
-      els = els || [];
-      each(sel.split(','), function (a) {
-        each(isa(a.replace(whitespaceExp, '')), function (el) {
-          els.push(el);
+      // unique result, e.g "ul id=foo class=foo" should not appear two times.
+      each(m, function (el) {
+        each(isa(el), function (el) {
+          if (!contains(els, el)) els.push(el);
         });
       });
       return els;
@@ -286,10 +284,7 @@
         els = ctx[byTag](sel);
       }
     } else if (m = tagNameAndOrIdAndOrClassExp.exec(sel)) {
-      var result = ctx[byTag](m[1])
-        , id = m[2]
-        , className = m[3];
-  
+      var result = ctx[byTag](m[1]), id = m[2], className = m[3];
       each(result, function (el) {
         if (el.id === id || containsClass(el, className)) els.push(el);
       });
